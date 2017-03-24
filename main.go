@@ -1,5 +1,6 @@
 package main
 import(
+    "encoding/json"
     "fmt"
     "log"
     "io"
@@ -82,9 +83,56 @@ func getImageByUrl(url string){
     })
 }
 
+func getFileString(path string)(ret string, err error){
+    file, err := os.Open(path)
+    if err != nil{
+        return
+    }
+    defer file.Close()
+    buf := make([]byte, 256)
+    for{
+        n, err := file.Read(buf)
+        if n == 0{
+            break
+        }
+        if err != nil{
+            break
+        }
+        ret += string(buf[:n])
+    }
+    return
+}
+type Config struct{
+    Url string
+}
+func getConfigByString(str string)(ret Config){
+    dec := json.NewDecoder(strings.NewReader(str))
+    for{
+        if err := dec.Decode(&ret); err == io.EOF{
+            break
+        } else if err != nil{
+            return
+        }
+    }
+    return
+}
+func getConfig(path string)(ret Config, err error){
+    str, err := getFileString(path)
+    if err != nil{
+        return
+    }
+    ret = getConfigByString(str)
+    return
+}
 func main(){
-    mapUrl = make(map[string]bool)
-    url := "http://www.idea-webtools.com/2014/01/night-view-wallpaper.html"
-    getImageByUrl(url)
+    config, err := getConfig("config.json")
+    if err != nil{
+        log.Fatal(err)
+    }
+    fmt.Println(config)
+    
+    //mapUrl = make(map[string]bool)
+    //url := "http://www.idea-webtools.com/2014/01/night-view-wallpaper.html"
+    //getImageByUrl(url)
 }
 
