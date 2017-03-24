@@ -2,6 +2,7 @@ package main
 import(
     "encoding/json"
     "fmt"
+    "flag"
     "log"
     "io"
     "os"
@@ -83,6 +84,7 @@ func getImageByUrl(url string){
     })
 }
 
+// テキストファイルの取得
 func getFileString(path string)(ret string, err error){
     file, err := os.Open(path)
     if err != nil{
@@ -102,6 +104,8 @@ func getFileString(path string)(ret string, err error){
     }
     return
 }
+
+// コンフィグ
 type Config struct{
     Url string
 }
@@ -125,11 +129,23 @@ func getConfig(path string)(ret Config, err error){
     return
 }
 func main(){
-    config, err := getConfig("config.json")
-    if err != nil{
-        log.Fatal(err)
+    var config Config
+    var path string
+    flag.StringVar(&path, "path", "", "config.json path")
+    flag.Parse()
+    if path == ""{
+        config, err := getConfig("config.json")
+        if err != nil{
+            log.Fatal(err)
+        }
+        fmt.Println(config)
+    }else{
+        config, err := getConfig(path)
+        if err != nil{
+            log.Fatal(err)
+        }
+        fmt.Println(config)
     }
-    fmt.Println(config)
     
     //mapUrl = make(map[string]bool)
     //url := "http://www.idea-webtools.com/2014/01/night-view-wallpaper.html"
