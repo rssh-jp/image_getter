@@ -1,87 +1,99 @@
 package main
 
 import (
-	"flag"
 	"log"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/rssh-jp/image_getter"
-	"github.com/rssh-jp/image_getter/config"
+
+	"github.com/urfave/cli/v2"
 )
-
-var (
-	conf   *config.Config
-	mapURL = make(map[string]struct{})
-)
-
-func preprocess() error {
-	var path string
-
-	flag.StringVar(&path, "path", "config.json", "config.json path")
-	flag.Parse()
-
-	var err error
-
-	conf, err = config.New(path)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
 
 func main() {
-	log.Println("START")
-	defer log.Println("END")
+	app := &cli.App{
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "url",
+				Aliases:  []string{"u"},
+				Required: true,
+				Usage:    "url",
+			},
+			&cli.StringFlag{
+				Name:     "storage_path",
+				Aliases:  []string{"s"},
+				Required: true,
+				Usage:    "download path",
+			},
+			&cli.IntFlag{
+				Name:    "depth",
+				Aliases: []string{"d"},
+				Value:   0,
+				Usage:   "url pursue depth",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			log.Println("START")
+			defer log.Println("END")
 
-	err := preprocess()
-	if err != nil {
-		log.Fatal(err)
-	}
+			confURL := c.String("url")
+			confStoragePath := c.String("storage_path")
+			confDepth := c.Int("depth")
 
-	inst := imagegetter.New()
-	defer inst.Close()
+			inst := imagegetter.New()
+			defer inst.Close()
 
-	var wg sync.WaitGroup
-	var wgRead sync.WaitGroup
+			var wg sync.WaitGroup
+			var wgRead sync.WaitGroup
 
-	wg.Add(1)
+			wg.Add(1)
 
-	go func() {
-		for {
-			select {
-			case url := <-inst.URL:
-				wgRead.Add(1)
+			mapURL := make(map[string]struct{})
 
-				if _, ok := mapURL[url]; ok {
-					continue
+			go func() {
+				for {
+					select {
+					case url := <-inst.URL:
+						wgRead.Add(1)
+
+						if _, ok := mapURL[url]; ok {
+							continue
+						}
+
+						err := imagegetter.SaveImage(url, getDir(url, confStoragePath))
+						if err != nil {
+							log.Fatal(err)
+						}
+
+						mapURL[url] = struct{}{}
+						wgRead.Done()
+					}
 				}
+			}()
 
-				err := imagegetter.SaveImage(url, getDir(url, conf.StoragePath))
+			go func() {
+				defer wg.Done()
+
+				err := inst.Execute(confURL, confDepth)
 				if err != nil {
 					log.Fatal(err)
 				}
+			}()
 
-				mapURL[url] = struct{}{}
-				wgRead.Done()
-			}
-		}
-	}()
+			wait(inst, &wg, &wgRead)
 
-	go func() {
-		defer wg.Done()
+			return nil
+		},
+	}
 
-		err := inst.Execute(conf.Url, conf.Depth)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	wait(inst, &wg, &wgRead)
+	err := app.Run(os.Args)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func wait(i *imagegetter.ImageGetter, wg, wgRead *sync.WaitGroup) {
