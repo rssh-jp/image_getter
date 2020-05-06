@@ -62,7 +62,8 @@ func main() {
 				ch := make(chan struct{}, semaphore)
 				for {
 					select {
-					case url := <-inst.URL:
+					case data := <-inst.URL:
+                        log.Println("+++++++++++++", data)
 						wgRead.Add(1)
 						ch <- struct{}{}
 
@@ -82,7 +83,7 @@ func main() {
 							}
 
 							mapURL[url] = struct{}{}
-						}(url)
+						}(data.SrcURL)
 					}
 				}
 			}()
