@@ -14,6 +14,10 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const (
+	semaphore = 8
+)
+
 func main() {
 	app := &cli.App{
 		Flags: []cli.Flag{
@@ -55,22 +59,30 @@ func main() {
 			mapURL := make(map[string]struct{})
 
 			go func() {
+				ch := make(chan struct{}, semaphore)
 				for {
 					select {
 					case url := <-inst.URL:
 						wgRead.Add(1)
+						ch <- struct{}{}
 
-						if _, ok := mapURL[url]; ok {
-							continue
-						}
+						go func(url string) {
+							defer func() {
+								<-ch
+								wgRead.Done()
+							}()
 
-						err := imagegetter.SaveImage(url, getDir(url, confStoragePath))
-						if err != nil {
-							log.Fatal(err)
-						}
+							if _, ok := mapURL[url]; ok {
+								return
+							}
 
-						mapURL[url] = struct{}{}
-						wgRead.Done()
+							err := imagegetter.SaveImage(url, getDir(url, confStoragePath))
+							if err != nil {
+								log.Fatal(err)
+							}
+
+							mapURL[url] = struct{}{}
+						}(url)
 					}
 				}
 			}()
