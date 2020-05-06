@@ -10,6 +10,8 @@ bin/image_getter -s ./download -u https://golang.org/pkg/ -d 0
 ```
 
 # パラメータ
+| 省略名, 名前 | 説明 |
+| ---- | ---- |
 | -s, --storage_path | ダウンロード先のローカルストレージパス |
 | -u, --url | ダウンロード元のURL |
 | -d, --depth | ダウンロード元のURLのaタグを見て深堀りしていく数。デフォルト0  |
