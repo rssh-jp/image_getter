@@ -63,7 +63,6 @@ func main() {
 				for {
 					select {
 					case data := <-inst.URL:
-                        log.Println("+++++++++++++", data)
 						wgRead.Add(1)
 						ch <- struct{}{}
 

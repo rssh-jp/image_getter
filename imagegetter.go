@@ -1,16 +1,16 @@
 package imagegetter
 
 import (
-	"fmt"
+	"log"
 	"net/url"
 	"sync"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
-type Data struct{
-    BaseURL string
-    SrcURL string
+type Data struct {
+	BaseURL string
+	SrcURL  string
 }
 
 type ImageGetter struct {
@@ -41,7 +41,7 @@ func (g *ImageGetter) Execute(urlStr string, depth int) error {
 	}
 
 	netUrl, _ := url.Parse(urlStr)
-	fmt.Println(netUrl)
+	log.Println("EXECUTE URL:", netUrl)
 	res.Find("img").Each(func(_ int, s *goquery.Selection) {
 		urlStr, _ := s.Attr("src")
 
@@ -65,9 +65,9 @@ func (g *ImageGetter) Execute(urlStr string, depth int) error {
 	res.Find("a").Each(func(_ int, s *goquery.Selection) {
 		wkUrl, _ := s.Attr("href")
 		workURL, err := netUrl.Parse(wkUrl)
-        if err != nil{
-            return
-        }
+		if err != nil {
+			return
+		}
 
 		err = g.Execute(workURL.String(), depth-1)
 		if err != nil {
