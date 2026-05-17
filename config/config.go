@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 	"io"
-	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -15,7 +15,7 @@ type Config struct {
 }
 
 func New(path string) (*Config, error) {
-	buf, err := ioutil.ReadFile(path)
+	buf, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
