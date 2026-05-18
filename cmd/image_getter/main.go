@@ -1,15 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/rssh-jp/image_getter"
+	imagegetter "github.com/rssh-jp/image_getter/internal/imagegetter"
 
 	"github.com/urfave/cli/v2"
 )
@@ -49,54 +49,69 @@ func main() {
 			confDepth := c.Int("depth")
 
 			inst := imagegetter.New()
-			defer inst.Close()
 
-			var wg sync.WaitGroup
-			var wgRead sync.WaitGroup
+			var (
+				wgRead     sync.WaitGroup
+				mapURL     = make(map[string]struct{})
+				mapURLMu   sync.Mutex
+				seenDirs   = make(map[string]struct{})
+				seenDirsMu sync.Mutex
+			)
 
-			wg.Add(1)
-
-			mapURL := make(map[string]struct{})
-
+			// consumerDone は consumer goroutine が全 SaveImage を含めて完了した時点で close される。
+			// renameWithCount はこの後にのみ実行する。
+			consumerDone := make(chan struct{})
 			go func() {
+				defer close(consumerDone)
 				ch := make(chan struct{}, semaphore)
-				for {
-					select {
-					case data := <-inst.URL:
-						wgRead.Add(1)
-						ch <- struct{}{}
+				for data := range inst.URL {
+					wgRead.Add(1)
+					ch <- struct{}{}
+					go func(url string) {
+						defer func() {
+							<-ch
+							wgRead.Done()
+						}()
 
-						go func(url string) {
-							defer func() {
-								<-ch
-								wgRead.Done()
-							}()
+						mapURLMu.Lock()
+						if _, ok := mapURL[url]; ok {
+							mapURLMu.Unlock()
+							return
+						}
+						mapURL[url] = struct{}{}
+						mapURLMu.Unlock()
 
-							if _, ok := mapURL[url]; ok {
-								return
-							}
+						dir := getDir(url, confStoragePath)
+						if err := imagegetter.SaveImage(url, dir); err != nil {
+							log.Println(err)
+							return
+						}
 
-							err := imagegetter.SaveImage(url, getDir(url, confStoragePath))
-							if err != nil {
-								log.Fatal(err)
-							}
-
-							mapURL[url] = struct{}{}
-						}(data.SrcURL)
-					}
+						seenDirsMu.Lock()
+						seenDirs[dir] = struct{}{}
+						seenDirsMu.Unlock()
+					}(data.SrcURL)
 				}
+				// inst.URL が close された後、残存 SaveImage goroutine の完了を待つ。
+				wgRead.Wait()
 			}()
 
-			go func() {
-				defer wg.Done()
+			// Execute は同期呼び出し。内部 goroutine はまだ動いている場合がある。
+			if err := inst.Execute(confURL, confDepth); err != nil {
+				log.Println(err)
+			}
+			// Close は全 execute goroutine の完了を待ってから inst.URL を close する。
+			inst.Close()
 
-				err := inst.Execute(confURL, confDepth)
-				if err != nil {
-					log.Fatal(err)
+			// consumer goroutine（全 SaveImage 含む）の完了を待つ。
+			<-consumerDone
+
+			// 全ダウンロード完了後にディレクトリを一括リネーム
+			for dir := range seenDirs {
+				if err := renameWithCount(dir); err != nil {
+					log.Println("rename:", err)
 				}
-			}()
-
-			wait(inst, &wg, &wgRead)
+			}
 
 			return nil
 		},
@@ -106,14 +121,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-func wait(i *imagegetter.ImageGetter, wg, wgRead *sync.WaitGroup) {
-	wg.Wait()
-
-	time.Sleep(time.Millisecond)
-
-	wgRead.Wait()
 }
 
 func getDir(u, destpath string) string {
@@ -126,4 +133,29 @@ func getDir(u, destpath string) string {
 	str := strings.Join(list[:len(list)-1], "_")
 	dir := filepath.Join(destpath, workURL.Host, str)
 	return dir
+}
+
+// renameWithCount はディレクトリ内のファイル数を数え、"{count}_{basename}" にリネームする。
+// 全ダウンロード完了後に一度だけ呼ぶことを想定している。
+func renameWithCount(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			count++
+		}
+	}
+	if count == 0 {
+		return nil
+	}
+	parent := filepath.Dir(dir)
+	base := filepath.Base(dir)
+	newDir := filepath.Join(parent, fmt.Sprintf("%d_%s", count, base))
+	if dir == newDir {
+		return nil
+	}
+	return os.Rename(dir, newDir)
 }
