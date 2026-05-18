@@ -71,4 +71,3 @@ func copyToFile(name string, src io.Reader) (err error) {
 	}
 	return
 }
-

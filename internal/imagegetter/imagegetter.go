@@ -43,7 +43,7 @@ type Data struct {
 type ImageGetter struct {
 	URL      chan Data
 	wg       sync.WaitGroup
-	fetchSem chan struct{}   // 同時フェッチ数を制限するセマフォ
+	fetchSem chan struct{}       // 同時フェッチ数を制限するセマフォ
 	seen     map[string]struct{} // 訪問済みページ URL の重複排除
 	seenMu   sync.Mutex
 }
@@ -193,4 +193,3 @@ func parseBestSrcset(srcset string, baseURL *url.URL) *url.URL {
 func isValidImageURL(u *url.URL) bool {
 	return u.Host != "" && (u.Scheme == "http" || u.Scheme == "https")
 }
-
